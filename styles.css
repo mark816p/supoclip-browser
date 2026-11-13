@@ -267,6 +267,8 @@ progress::-moz-progress-bar { background: var(--accent); }
 html, body { background: var(--page); color: var(--ink); }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, label:focus-visible { outline-color: #91a5ff; }
 .skip-link { background: #f1f3f7; color: #101216; }
+.eyebrow { color: #c5cbd6; }
+.eyebrow-index { color: #adbbff; }
 .brand-light { color: #a4aab5; }
 .studio-head .intro { color: #c2c7d0; }
 .button-primary:disabled { border-color: #39415e; background: #242a3c; color: #bac5ff; }
