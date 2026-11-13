@@ -16,7 +16,7 @@ For full SupoClip, use its [self-hosting guide](https://www.supoclip.com/blog/se
 
 ## GitHub Pages
 
-The included Actions workflow deploys this static folder to GitHub Pages on pushes to `main`. In repository settings, set **Pages → Build and deployment → Source → GitHub Actions** if it is not already selected.
+GitHub Pages publishes the repository root on `main`. Set **Pages → Build and deployment → Source → Deploy from a branch → `main` → `/(root)`**. GitHub republishes the page when the branch changes.
 
 ## Technology
 
