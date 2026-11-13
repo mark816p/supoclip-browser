@@ -10,8 +10,8 @@ const el = {
   frameMode: byId("frameMode"), exportButton: byId("exportButton"), exportCanvas: byId("exportCanvas"), exportProgress: byId("exportProgress"),
   progressLabel: byId("progressLabel"), progressValue: byId("progressValue"), progressBar: byId("progressBar"), panelMessage: byId("panelMessage"),
   projectStatus: byId("projectStatus"), resetButton: byId("resetButton"), fileTab: byId("fileTab"), urlTab: byId("urlTab"),
-  filePane: byId("filePane"), urlPane: byId("urlPane"), youtubeUrl: byId("youtubeUrl"), previewUrl: byId("previewUrl"),
-  notice: byId("notice"), jumpStart: byId("jumpStart"),
+  filePane: byId("filePane"), urlPane: byId("urlPane"), videoUrl: byId("videoUrl"), loadUrl: byId("loadUrl"),
+  notice: byId("notice"), jumpStart: byId("jumpStart"), privacyText: document.querySelector(".privacy-note span:last-child"),
 };
 
 let sourceUrl = "";
@@ -21,6 +21,7 @@ let noticeTimer = 0;
 let lastDraw = 0;
 let seeking = false;
 let youtubeFrame = null;
+let sourceKind = "";
 
 function formatTime(seconds, tenths = false) {
   if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
@@ -109,6 +110,8 @@ function setFile(file) {
     youtubeFrame.remove();
     youtubeFrame = null;
   }
+  el.sourceVideo.removeAttribute("crossorigin");
+  sourceKind = "file";
   sourceUrl = URL.createObjectURL(file);
   el.sourceVideo.src = sourceUrl;
   el.sourceVideo.load();
@@ -134,6 +137,60 @@ function setFile(file) {
   el.timeline.hidden = false;
   setStatus("Loading video", false);
   setMessage("Video stays in this tab and is rendered at real time.");
+  el.privacyText.textContent = "Your file stays in this tab. Nothing uploads.";
+}
+
+function setVideoUrl(value) {
+  if (parseYoutubeId(value)) {
+    previewYoutube(value);
+    return;
+  }
+  let url;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    announce("Paste a direct HTTPS video file link.");
+    el.videoUrl.focus();
+    return;
+  }
+  if (url.protocol !== "https:") {
+    announce("Use a direct HTTPS video file link.");
+    return;
+  }
+  if (sourceUrl) {
+    URL.revokeObjectURL(sourceUrl);
+    sourceUrl = "";
+  }
+  youtubeFrame?.remove();
+  youtubeFrame = null;
+  sourceKind = "url";
+  el.sourceVideo.pause();
+  el.sourceVideo.crossOrigin = "anonymous";
+  el.sourceVideo.src = url.href;
+  el.sourceVideo.load();
+  el.sourceVideo.hidden = false;
+  el.videoStage.hidden = false;
+  el.captionPreview.hidden = false;
+  el.playButton.hidden = false;
+  el.stageTime.hidden = false;
+  el.emptyState.hidden = true;
+  el.transport.hidden = false;
+  el.timeline.hidden = false;
+  el.fileTab.classList.remove("is-active");
+  el.urlTab.classList.add("is-active");
+  el.fileTab.setAttribute("aria-pressed", "false");
+  el.urlTab.setAttribute("aria-pressed", "true");
+  el.filePane.hidden = true;
+  el.urlPane.hidden = false;
+  el.captionText.disabled = false;
+  el.frameMode.disabled = false;
+  el.captionStyle.disabled = false;
+  el.fileName.textContent = "Direct video link";
+  el.fileMeta.textContent = url.hostname;
+  el.resetButton.disabled = false;
+  setStatus("Loading video", false);
+  setMessage("The video streams from its host into this tab. This site does not store it.");
+  el.privacyText.textContent = "Direct media streams to your browser. This site receives no video.";
 }
 
 function onMetadata() {
@@ -159,7 +216,7 @@ function onMetadata() {
   el.sourceVideo.style.objectFit = el.frameMode.value === "cover" ? "cover" : "contain";
   el.exportButton.disabled = false;
   setStatus("Ready to edit", true);
-  setMessage("Preview and export stay on this device. Exports play at real time.");
+  setMessage("Preview and export run in this tab. Rendering plays at real time.");
   updateRange();
   updateControls();
 }
@@ -175,11 +232,11 @@ function parseYoutubeId(value) {
   }
 }
 
-function previewYoutube() {
-  const id = parseYoutubeId(el.youtubeUrl.value);
+function previewYoutube(value = el.videoUrl.value) {
+  const id = parseYoutubeId(value);
   if (!/^[A-Za-z0-9_-]{11}$/.test(id)) {
-    announce("Paste a valid YouTube video link.");
-    el.youtubeUrl.focus();
+    announce("Paste a direct video link or a valid YouTube link.");
+    el.videoUrl.focus();
     return;
   }
   if (sourceUrl) {
@@ -187,8 +244,10 @@ function previewYoutube() {
     sourceUrl = "";
   }
   el.sourceVideo.pause();
+  el.sourceVideo.removeAttribute("crossorigin");
   el.sourceVideo.removeAttribute("src");
   el.sourceVideo.load();
+  sourceKind = "youtube";
   el.sourceVideo.hidden = true;
   el.emptyState.hidden = true;
   el.videoStage.hidden = false;
@@ -201,15 +260,15 @@ function previewYoutube() {
   youtubeFrame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
   youtubeFrame.referrerPolicy = "strict-origin-when-cross-origin";
   youtubeFrame.allowFullscreen = true;
-  youtubeFrame.src = `https://www.youtube-nocookie.com/embed/${id}?modestbranding=1&rel=0`;
+  youtubeFrame.src = `https://www.youtube-nocookie.com/embed/${id}?rel=0`;
   el.videoStage.prepend(youtubeFrame);
   el.captionPreview.hidden = true;
   el.playButton.hidden = true;
   el.stageTime.hidden = true;
   el.exportButton.disabled = true;
   el.resetButton.disabled = false;
-  el.fileName.textContent = "YouTube preview";
-  el.fileMeta.textContent = "Browser preview only";
+  el.fileName.textContent = "YouTube video";
+  el.fileMeta.textContent = "Preview only · YouTube player";
   el.fileTab.classList.remove("is-active");
   el.urlTab.classList.add("is-active");
   el.fileTab.setAttribute("aria-pressed", "false");
@@ -220,7 +279,8 @@ function previewYoutube() {
   el.frameMode.disabled = true;
   el.captionStyle.disabled = true;
   setStatus("Preview only", false);
-  setMessage("YouTube blocks browser export. Choose a video file to edit, or run SupoClip with its self-hosted backend.");
+  setMessage("YouTube videos play in preview only. Use a file or CORS-enabled direct video URL to edit.");
+  el.privacyText.textContent = "YouTube preview loads from YouTube. Editing is disabled for this source.";
   el.urlPane.scrollIntoView({ block: "nearest" });
 }
 
@@ -289,7 +349,7 @@ function drawCaption(ctx, width, height, text, style) {
   const x = (width - boxWidth) / 2;
   const y = height * 0.76 - boxHeight / 2;
   roundRect(ctx, x, y, boxWidth, boxHeight, 5);
-  ctx.fillStyle = style === "highlight" ? "#1f2de6" : "rgb(9 10 12 / 76%)";
+  ctx.fillStyle = style === "highlight" ? "#4f67e8" : "rgb(9 10 12 / 76%)";
   ctx.fill();
   ctx.fillStyle = "#ffffff";
   lines.forEach((item, index) => ctx.fillText(item, width / 2, y + paddingY + lineHeight * index + lineHeight / 2, maxWidth));
@@ -421,6 +481,7 @@ function resetProject() {
   youtubeFrame?.remove();
   youtubeFrame = null;
   el.sourceVideo.pause();
+  el.sourceVideo.removeAttribute("crossorigin");
   el.sourceVideo.removeAttribute("src");
   el.sourceVideo.load();
   el.sourceVideo.hidden = false;
@@ -435,7 +496,7 @@ function resetProject() {
   el.fileName.textContent = "Drop a file or browse";
   el.fileMeta.textContent = "MP4, MOV, WebM";
   el.videoFile.value = "";
-  el.youtubeUrl.value = "";
+  el.videoUrl.value = "";
   el.captionText.value = "";
   el.captionText.disabled = false;
   el.frameMode.value = "cover";
@@ -459,8 +520,10 @@ function resetProject() {
   el.filePane.hidden = false;
   el.urlPane.hidden = true;
   el.captionCount.textContent = "0 / 80";
+  sourceKind = "";
   setStatus("Waiting for video", false);
   setMessage("No account. No subscription. No upload.");
+  el.privacyText.textContent = "Your video stays in this tab. Nothing uploads.";
   updateControls();
 }
 
@@ -468,8 +531,9 @@ el.videoFile.addEventListener("change", () => setFile(el.videoFile.files?.[0]));
 el.sourceVideo.addEventListener("loadedmetadata", onMetadata);
 el.sourceVideo.addEventListener("error", () => {
   setStatus("Video could not open", false);
-  setMessage("Try a video encoded as H.264 MP4 or WebM in Chrome, Edge, or Firefox.");
-  announce("This browser cannot decode the video. Try H.264 MP4 or WebM.");
+  const urlHint = sourceKind === "url" ? "The host must allow cross-origin video access." : "Try H.264 MP4 or WebM.";
+  setMessage(`${urlHint} Chrome, Edge, and Firefox support the editor.`);
+  announce(sourceKind === "url" ? "Video link failed. Check the URL and its CORS settings." : "This browser cannot decode the video. Try H.264 MP4 or WebM.");
 });
 el.startRange.addEventListener("input", () => {
   const maxStart = Math.max(0, selectedEnd() - 0.5);
@@ -508,8 +572,8 @@ el.captionStyle.addEventListener("change", updateCaption);
 el.frameMode.addEventListener("change", () => { el.sourceVideo.style.objectFit = el.frameMode.value === "cover" ? "cover" : "contain"; });
 el.exportButton.addEventListener("click", exportClip);
 el.resetButton.addEventListener("click", resetProject);
-el.previewUrl.addEventListener("click", previewYoutube);
-el.youtubeUrl.addEventListener("keydown", (event) => { if (event.key === "Enter") previewYoutube(); });
+el.loadUrl.addEventListener("click", () => setVideoUrl(el.videoUrl.value));
+el.videoUrl.addEventListener("keydown", (event) => { if (event.key === "Enter") setVideoUrl(el.videoUrl.value); });
 el.fileTab.addEventListener("click", () => {
   el.fileTab.classList.add("is-active");
   el.urlTab.classList.remove("is-active");
@@ -525,7 +589,7 @@ el.urlTab.addEventListener("click", () => {
   el.fileTab.setAttribute("aria-pressed", "false");
   el.urlPane.hidden = false;
   el.filePane.hidden = true;
-  el.youtubeUrl.focus();
+  el.videoUrl.focus();
 });
 el.dropZone.addEventListener("keydown", (event) => {
   if (event.key === "Enter" || event.key === " ") {

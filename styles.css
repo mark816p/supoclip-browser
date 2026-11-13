@@ -246,3 +246,83 @@ progress::-moz-progress-bar { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+:root {
+  color-scheme: dark;
+  --page: #0c0e12;
+  --paper: #15181e;
+  --panel: #1a1e25;
+  --ink: #f1f3f7;
+  --muted: #b2b8c3;
+  --quiet: #9098a5;
+  --line: #353a44;
+  --dark: #101216;
+  --stage: #08090c;
+  --accent: #4f67e8;
+  --accent-hover: #4056d3;
+  --green: #a7ed9b;
+  --shadow: 0 1px 2px rgb(0 0 0 / 25%), 0 16px 44px rgb(0 0 0 / 20%);
+}
+
+html, body { background: var(--page); color: var(--ink); }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, label:focus-visible { outline-color: #91a5ff; }
+.skip-link { background: #f1f3f7; color: #101216; }
+.brand-light { color: #a4aab5; }
+.studio-head .intro { color: #c2c7d0; }
+.button-primary:disabled { border-color: #39415e; background: #242a3c; color: #bac5ff; }
+.button-quiet { border-color: var(--line); color: #d4d8e0; }
+.button-quiet:not(:disabled):hover { border-color: #596170; background: #20242b; color: #fff; }
+.studio-grid { border-color: #30353e; background: var(--paper); }
+.preview-column { background: #101318; }
+.section-bar h2, .panel-head h2 { color: #f1f3f7; }
+.aspect-label { color: #b0b7c2; }
+.aspect-icon { border-color: #a1a8b4; }
+.stage-wrap { background: #08090c; }
+.stage-empty { border-color: #343943; background: #101216; }
+.empty-copy { color: #b6bbc5; }
+.file-note { color: #b7bdc8; }
+.video-stage, .video-stage video, .youtube-preview { background: #08090c; }
+.transport-time { color: #b7bdc8; }
+.timeline { border-color: #353a44; background: #191c22; }
+.timeline-head, .range-labels { color: #b2b8c3; }
+.timeline-head span:first-child { color: #f1f3f7; }
+.range-track { background: #383e49; }
+.range-labels { color: #a8afbb; }
+.privacy-note { color: #c0c5ce; }
+.lock-icon { border-color: #545c68; color: #c6cbd3; }
+.edit-panel { border-color: #353a44; background: #15181e; }
+.panel-status { color: #b2b8c3; }
+.panel-status .state-dot { background: #737b87; }
+.input-tabs { background: #20242b; }
+.input-tab { color: #c4c9d2; }
+.input-tab.is-active { border-color: #444b57; background: #2b3039; color: #fff; box-shadow: none; }
+.field-label { color: #e1e4ea; }
+.drop-zone { border-color: #59616d; background: #1b1f26; }
+.drop-zone:hover, .drop-zone.is-dragging { border-color: var(--accent); background: #202638; }
+.drop-icon { border-color: #454c58; background: #242932; color: #a5b5ff; }
+.drop-copy strong { color: #eef0f4; }
+.drop-copy small { color: #b2b8c3; }
+.browse-word, .url-go { color: #b1beff; }
+.url-entry { border-color: #454b56; background: #171a20; }
+.url-entry:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgb(119 144 255 / 20%); }
+.url-entry input { background: #171a20; color: #f1f3f7; }
+.url-entry input::placeholder, textarea::placeholder { color: #929aa7; }
+.url-go { border-left-color: #454b56; background: #20242b; }
+.url-go:hover { background: #2a3040; }
+.field-hint { color: #b2b8c3; }
+.panel-divider { background: #343a44; }
+textarea, select { border-color: #454b56; background: #191c22; color: #f1f3f7; }
+textarea:disabled, select:disabled { border-color: #393e48; background: #20242a; color: #adb4bf; }
+.field-foot, .optional-label, .export-meta, .panel-footnote { color: #adb4bf; }
+.export-title { color: #eef0f4; }
+.progress-head { color: #bdc3cc; }
+progress, progress::-webkit-progress-bar { background: #343a44; }
+progress::-webkit-progress-value, progress::-moz-progress-bar { background: var(--accent); }
+.engine-mark { border-color: #48505c; color: #d2d6de; }
+.engine-mark-muted { color: #adb4bf; }
+.engine-item strong { color: #e6e8ed; }
+.engine-item small { color: #adb4bf; }
+.guide-link { color: #d8dbe2; }
+.guide-link span { color: #a8b6ff; }
+.site-footer { border-top-color: #343942; background: #0b0d11; color: #b2b8c3; }
+.footer-separator { color: #737b87; }
