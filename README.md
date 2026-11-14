@@ -1,32 +1,29 @@
-# SupoClip Browser Studio
+# SupoClip Browser Clipper
 
-A small, independent browser editor for cutting a video into a vertical WebM clip. It runs from GitHub Pages with no app install, account, subscription, or video upload to this project.
+A static, no-install browser adaptation of SupoClip's automatic clip-selection workflow. Upload a video or use a direct CORS-enabled video URL. Speech recognition and clip selection run locally in the browser; the video is not uploaded to this project.
 
 ## Use it
 
-Open the deployed page in a recent desktop version of Chrome, Edge, or Firefox. Choose a video file or paste a direct HTTPS MP4/WebM link. Remote video hosts must allow cross-origin playback. Set the in and out points, add an optional caption, choose the vertical framing, then select **Export**. The browser renders the clip at real time and downloads a WebM file.
+Open the GitHub Pages site in a current desktop version of Chrome or Edge with WebGPU enabled. Choose a video, set how many moments to find, then select **Find clips**. SupoClip extracts speech locally, transcribes it with Whisper, and uses a small local Qwen model to select and rank self-contained moments. Preview the picks and render any of them as a vertical WebM clip with a hook title and transcript captions.
 
-Local files stay in the current browser tab. Direct links stream from their host into the browser. Closing or refreshing the page clears the project. Export keeps the source audio when the browser exposes an audio track.
+The browser automatically fetches the runtime and model files the first time they are needed, then caches them for reuse. No app, extension, model, or command-line tool needs to be installed manually. The model files are large, so the first analysis takes longer and needs an internet connection. Video and transcript processing stay in the current tab. Export downloads the finished WebM clip.
 
-## What it does not do
+Direct video URLs must be HTTPS, direct media files, and served with CORS access. YouTube links are not processed: the embedded player does not expose video bytes, and YouTube policies restrict downloading or storing audiovisual content without prior written approval.
 
-This is not the full SupoClip AI pipeline. GitHub Pages cannot start SupoClip's Python API and video worker. The editor trims and reframes clips; it does not find moments, transcribe speech, or track faces. YouTube links play in an embedded preview only. YouTube's developer policies prohibit clients from storing copies of its audiovisual content without prior written approval, so this editor does not export YouTube playback.
+## How the browser version maps to SupoClip
 
-For full SupoClip, use its [self-hosting guide](https://www.supoclip.com/blog/self-host-supoclip-docker). The documented setup uses Docker Compose with the web app, API, worker, PostgreSQL, and Redis. It can use local Whisper and Ollama to avoid paid AI APIs, but those models and services still need to be installed and run on your computer.
+The original project runs a Python API and workers. This static version adapts its transcript-grounded selection and comparative ranking ideas from `backend/src/ai.py`, and its transcript selection principles from `backend/src/workflows/prompts.py`. The browser uses Transformers.js Whisper and WebLLM Qwen to run comparable stages on-device. It does not use SupoClip's Python worker, database, Redis, external AI providers, B-roll services, or YuNet face tracker. It renders center-cropped clips with browser canvas and MediaRecorder.
+
+The upstream project is [FujiwaraChoki/SupoClip](https://github.com/FujiwaraChoki/supoclip), licensed under AGPL-3.0-or-later. This adaptation is also under AGPL-3.0-or-later; see [LICENSE](LICENSE). SupoClip is not affiliated with or endorsed by the upstream maintainers.
 
 ## GitHub Pages
 
-GitHub Pages publishes the repository root on `main`. Set **Pages → Build and deployment → Source → Deploy from a branch → `main` → `/(root)`**. GitHub republishes the page when the branch changes.
+The repository root on `main` is published by GitHub Pages. No build step or server is required.
 
-## Technology
+## Third-party runtime and models
 
-- Plain HTML, CSS, and JavaScript
-- File and CORS-enabled URL playback with the browser's native video decoder
-- 9:16 canvas rendering with `MediaRecorder`
-- No third-party JavaScript, analytics, or font requests
+- [Transformers.js](https://github.com/huggingface/transformers.js) and [Xenova Whisper tiny](https://huggingface.co/Xenova/whisper-tiny) for local speech recognition.
+- [WebLLM](https://github.com/mlc-ai/web-llm) and [Qwen3 0.6B](https://huggingface.co/mlc-ai/Qwen3-0.6B-q4f16_1-MLC) for local clip ranking.
+- [FFmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) to extract audio in the browser.
 
-The browser streams media bytes to play direct links; it does not save the source video as a file. WebM recording depends on browser codec support. Very large files can use substantial memory. Rendering takes at least as long as the selected clip. Export downloads the finished clip.
-
-## License and name
-
-This browser editor is an independent project and is not affiliated with or endorsed by the SupoClip maintainers. SupoClip and its source are maintained at [FujiwaraChoki/supoclip](https://github.com/FujiwaraChoki/supoclip). This project's original code is available under the MIT License.
+Model licenses and runtime licenses belong to their respective maintainers. The app does not send the source video to these services; the browser fetches only public runtime and model files.

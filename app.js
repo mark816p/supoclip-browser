@@ -1,330 +1,246 @@
-const byId = (id) => document.getElementById(id);
+import { findBestMoments, formatClock } from "./auto-clip.js";
 
+const byId = (id) => document.getElementById(id);
 const el = {
-  videoFile: byId("videoFile"), dropZone: byId("dropZone"), fileName: byId("fileName"), fileMeta: byId("fileMeta"),
-  emptyState: byId("emptyState"), videoStage: byId("videoStage"), stageWrap: byId("stageWrap"), sourceVideo: byId("sourceVideo"),
-  captionPreview: byId("captionPreview"), playButton: byId("playButton"), stageTime: byId("stageTime"), transport: byId("transport"),
-  seekRange: byId("seekRange"), transportTime: byId("transportTime"), timeline: byId("timeline"), startRange: byId("startRange"),
-  endRange: byId("endRange"), startLabel: byId("startLabel"), endLabel: byId("endLabel"), clipDuration: byId("clipDuration"),
-  rangeFill: byId("rangeFill"), captionText: byId("captionText"), captionCount: byId("captionCount"), captionStyle: byId("captionStyle"),
-  frameMode: byId("frameMode"), exportButton: byId("exportButton"), exportCanvas: byId("exportCanvas"), exportProgress: byId("exportProgress"),
-  progressLabel: byId("progressLabel"), progressValue: byId("progressValue"), progressBar: byId("progressBar"), panelMessage: byId("panelMessage"),
-  projectStatus: byId("projectStatus"), resetButton: byId("resetButton"), fileTab: byId("fileTab"), urlTab: byId("urlTab"),
-  filePane: byId("filePane"), urlPane: byId("urlPane"), videoUrl: byId("videoUrl"), loadUrl: byId("loadUrl"),
-  notice: byId("notice"), jumpStart: byId("jumpStart"), privacyText: document.querySelector(".privacy-note span:last-child"),
+  file: byId("videoFile"), fileTab: byId("fileTab"), urlTab: byId("urlTab"), filePane: byId("filePane"), urlPane: byId("urlPane"),
+  url: byId("videoUrl"), loadUrl: byId("loadUrl"), drop: byId("dropZone"), fileName: byId("fileName"), fileMeta: byId("fileMeta"),
+  fileNameLabel: byId("fileNameLabel"), fileMetaLabel: byId("fileMetaLabel"), sourceMeta: byId("sourceMeta"), empty: byId("emptyState"),
+  stage: byId("videoStage"), video: byId("sourceVideo"), play: byId("playButton"), time: byId("stageTime"),
+  count: byId("clipCount"), length: byId("clipLength"), find: byId("findClips"), reset: byId("resetButton"),
+  status: byId("projectStatus"), message: byId("panelMessage"), progress: byId("exportProgress"), progressLabel: byId("progressLabel"),
+  progressValue: byId("progressValue"), progressBar: byId("progressBar"), notice: byId("notice"),
+  results: byId("results"), resultsCount: byId("resultsCount"), clipList: byId("clipList"), canvas: byId("exportCanvas"),
 };
 
+let sourceFile = null;
 let sourceUrl = "";
-let isExporting = false;
-let exportFrame = 0;
+let clips = [];
+let transcript = [];
+let activePreview = null;
+let exporting = false;
+let exportTimer = 0;
 let noticeTimer = 0;
-let lastDraw = 0;
-let seeking = false;
-let youtubeFrame = null;
-let sourceKind = "";
 
-function formatTime(seconds, tenths = false) {
-  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (tenths) return `${String(mins).padStart(2, "0")}:${secs.toFixed(1).padStart(4, "0")}`;
-  return `${mins}:${String(Math.floor(secs)).padStart(2, "0")}`;
+function setStatus(text, ready = false, busy = false) {
+  el.status.lastChild.textContent = text;
+  el.status.classList.toggle("is-ready", ready);
+  el.status.classList.toggle("is-rendering", busy);
 }
 
-function announce(message) {
-  window.clearTimeout(noticeTimer);
-  el.notice.textContent = message;
+function message(text) { el.message.textContent = text; }
+
+function announce(text) {
+  clearTimeout(noticeTimer);
+  el.notice.textContent = text;
   el.notice.hidden = false;
-  noticeTimer = window.setTimeout(() => { el.notice.hidden = true; }, 4300);
+  noticeTimer = setTimeout(() => { el.notice.hidden = true; }, 5200);
 }
 
-function setStatus(message, ready = false, rendering = false) {
-  el.projectStatus.lastChild.textContent = message;
-  el.projectStatus.classList.toggle("is-ready", ready);
-  el.projectStatus.classList.toggle("is-rendering", rendering);
-}
-
-function setMessage(message) {
-  el.panelMessage.textContent = message;
-}
-
-function selectedStart() {
-  return Number(el.startRange.value);
-}
-
-function selectedEnd() {
-  return Number(el.endRange.value);
-}
-
-function updateRange() {
-  const duration = el.sourceVideo.duration || 0;
-  const start = selectedStart();
-  const end = selectedEnd();
-  const clipLength = Math.max(0, end - start);
-  el.startLabel.textContent = formatTime(start, true);
-  el.endLabel.textContent = formatTime(end, true);
-  el.clipDuration.textContent = `${clipLength.toFixed(1)} sec`;
-  el.rangeFill.style.left = `${duration ? start / duration * 100 : 0}%`;
-  el.rangeFill.style.width = `${duration ? clipLength / duration * 100 : 0}%`;
-  if (!isExporting && el.sourceVideo.readyState > 0 && (el.sourceVideo.currentTime < start || el.sourceVideo.currentTime > end)) {
-    el.sourceVideo.currentTime = start;
-  }
-  updateControls();
-}
-
-function updateControls() {
-  const hasVideo = Number.isFinite(el.sourceVideo.duration) && el.sourceVideo.duration > 0;
-  const canRecord = hasVideo && window.MediaRecorder && el.exportCanvas.captureStream && el.sourceVideo.captureStream;
-  el.exportButton.disabled = !canRecord || selectedEnd() - selectedStart() < 0.5 || isExporting;
-  el.playButton.disabled = !hasVideo || isExporting;
-  el.resetButton.disabled = !hasVideo && !youtubeFrame;
-}
-
-function updateCaption() {
-  const caption = el.captionText.value.trim();
-  el.captionPreview.textContent = caption;
-  el.captionPreview.classList.toggle("is-highlight", el.captionStyle.value === "highlight" && Boolean(caption));
-  el.captionCount.textContent = `${el.captionText.value.length} / 80`;
-}
-
-function syncPreviewTime() {
-  if (!seeking && el.sourceVideo.readyState > 0 && !youtubeFrame) {
-    const current = el.sourceVideo.currentTime;
-    const duration = el.sourceVideo.duration || 1;
-    el.seekRange.value = String(current);
-    el.stageTime.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
-    el.transportTime.textContent = formatTime(current);
-    el.playButton.classList.toggle("is-playing", !el.sourceVideo.paused);
-    el.playButton.setAttribute("aria-label", el.sourceVideo.paused ? "Play preview" : "Pause preview");
-  }
-  exportFrame = window.requestAnimationFrame(syncPreviewTime);
-}
-
-function setFile(file) {
+function showSource(file) {
   if (!file || !file.type.startsWith("video/")) {
-    announce("Choose a video file to start editing.");
+    announce("Choose a video file in MP4, MOV, or WebM format.");
+    return;
+  }
+  if (file.size > 500 * 1024 * 1024) {
+    announce("This browser clipper supports video files up to 500 MB.");
     return;
   }
   if (sourceUrl) URL.revokeObjectURL(sourceUrl);
-  if (youtubeFrame) {
-    youtubeFrame.remove();
-    youtubeFrame = null;
-  }
-  el.sourceVideo.removeAttribute("crossorigin");
-  sourceKind = "file";
+  sourceFile = file;
   sourceUrl = URL.createObjectURL(file);
-  el.sourceVideo.src = sourceUrl;
-  el.sourceVideo.load();
-  el.sourceVideo.hidden = false;
-  el.videoStage.hidden = false;
-  el.captionPreview.hidden = false;
-  el.playButton.hidden = false;
-  el.stageTime.hidden = false;
-  el.emptyState.hidden = true;
-  el.dropZone.classList.remove("is-dragging");
+  clips = [];
+  transcript = [];
+  activePreview = null;
+  el.video.pause();
+  el.video.src = sourceUrl;
+  el.video.load();
+  el.video.hidden = false;
+  el.stage.hidden = false;
+  el.empty.hidden = true;
+  el.sourceMeta.hidden = false;
   el.fileName.textContent = file.name;
-  el.fileMeta.textContent = `${(file.size / 1024 / 1024).toFixed(1)} MB · local file`;
+  el.fileMeta.textContent = `${formatBytes(file.size)} · ${file.type || "video"}`;
+  el.fileNameLabel.textContent = file.name;
+  el.fileMetaLabel.textContent = `${formatBytes(file.size)} · ready to analyze`;
+  el.find.disabled = true;
+  el.reset.disabled = false;
+  el.results.hidden = true;
+  setStatus("Loading video", false);
+  message("Your video stays in this tab. The clip selection runs locally.");
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function loadUrl() {
+  el.fileTab.classList.remove("is-active");
+  el.urlTab.classList.add("is-active");
+  el.fileTab.setAttribute("aria-pressed", "false");
+  el.urlTab.setAttribute("aria-pressed", "true");
+  el.filePane.hidden = true;
+  el.urlPane.hidden = false;
+  el.url.focus();
+}
+
+function loadFileTab() {
   el.fileTab.classList.add("is-active");
   el.urlTab.classList.remove("is-active");
   el.fileTab.setAttribute("aria-pressed", "true");
   el.urlTab.setAttribute("aria-pressed", "false");
   el.filePane.hidden = false;
   el.urlPane.hidden = true;
-  el.captionText.disabled = false;
-  el.frameMode.disabled = false;
-  el.captionStyle.disabled = false;
-  el.transport.hidden = false;
-  el.timeline.hidden = false;
-  setStatus("Loading video", false);
-  setMessage("Video stays in this tab and is rendered at real time.");
-  el.privacyText.textContent = "Your file stays in this tab. Nothing uploads.";
 }
 
-function setVideoUrl(value) {
-  if (parseYoutubeId(value)) {
-    previewYoutube(value);
-    return;
-  }
+async function loadDirectUrl() {
   let url;
+  try { url = new URL(el.url.value.trim()); } catch { announce("Paste a direct HTTPS video URL."); el.url.focus(); return; }
+  if (url.protocol !== "https:") { announce("Use a secure HTTPS video URL."); return; }
+  if (["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtube-nocookie.com"].includes(url.hostname)) {
+    announce("YouTube videos can’t be analyzed or exported here. Use a file or a CORS-enabled direct video URL.");
+    return;
+  }
+  setStatus("Loading video link", false, true);
+  el.loadUrl.disabled = true;
+  message("Fetching the direct video to this tab. The source is not sent to SupoClip.");
   try {
-    url = new URL(value.trim());
-  } catch {
-    announce("Paste a direct HTTPS video file link.");
-    el.videoUrl.focus();
-    return;
-  }
-  if (url.protocol !== "https:") {
-    announce("Use a direct HTTPS video file link.");
-    return;
-  }
-  if (sourceUrl) {
-    URL.revokeObjectURL(sourceUrl);
-    sourceUrl = "";
-  }
-  youtubeFrame?.remove();
-  youtubeFrame = null;
-  sourceKind = "url";
-  el.sourceVideo.pause();
-  el.sourceVideo.crossOrigin = "anonymous";
-  el.sourceVideo.src = url.href;
-  el.sourceVideo.load();
-  el.sourceVideo.hidden = false;
-  el.videoStage.hidden = false;
-  el.captionPreview.hidden = false;
-  el.playButton.hidden = false;
-  el.stageTime.hidden = false;
-  el.emptyState.hidden = true;
-  el.transport.hidden = false;
-  el.timeline.hidden = false;
-  el.fileTab.classList.remove("is-active");
-  el.urlTab.classList.add("is-active");
-  el.fileTab.setAttribute("aria-pressed", "false");
-  el.urlTab.setAttribute("aria-pressed", "true");
-  el.filePane.hidden = true;
-  el.urlPane.hidden = false;
-  el.captionText.disabled = false;
-  el.frameMode.disabled = false;
-  el.captionStyle.disabled = false;
-  el.fileName.textContent = "Direct video link";
-  el.fileMeta.textContent = url.hostname;
-  el.resetButton.disabled = false;
-  setStatus("Loading video", false);
-  setMessage("The video streams from its host into this tab. This site does not store it.");
-  el.privacyText.textContent = "Direct media streams to your browser. This site receives no video.";
-}
-
-function onMetadata() {
-  const duration = el.sourceVideo.duration;
-  if (!Number.isFinite(duration) || duration <= 0) {
-    announce("This video has no readable duration. Try MP4 or WebM.");
-    return;
-  }
-  el.startRange.max = String(duration);
-  el.endRange.max = String(duration);
-  el.seekRange.max = String(duration);
-  el.startRange.value = "0";
-  el.endRange.value = String(duration);
-  el.sourceVideo.currentTime = 0;
-  el.stageTime.textContent = `0:00 / ${formatTime(duration)}`;
-  el.seekRange.value = "0";
-  el.transportTime.textContent = "0:00";
-  el.videoStage.style.aspectRatio = "9 / 16";
-  el.videoStage.style.maxHeight = "100%";
-  el.videoStage.style.maxWidth = "100%";
-  el.videoStage.style.width = "auto";
-  el.videoStage.style.height = "100%";
-  el.sourceVideo.style.objectFit = el.frameMode.value === "cover" ? "cover" : "contain";
-  el.exportButton.disabled = false;
-  setStatus("Ready to edit", true);
-  setMessage("Preview and export run in this tab. Rendering plays at real time.");
-  updateRange();
-  updateControls();
-}
-
-function parseYoutubeId(value) {
-  try {
-    const url = new URL(value.trim());
-    if (!["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtube-nocookie.com"].includes(url.hostname)) return "";
-    if (url.hostname.endsWith("youtu.be")) return url.pathname.split("/").filter(Boolean)[0] || "";
-    return url.searchParams.get("v") || url.pathname.match(/\/(?:embed|shorts)\/([^/?]+)/)?.[1] || "";
-  } catch {
-    return "";
-  }
-}
-
-function previewYoutube(value = el.videoUrl.value) {
-  const id = parseYoutubeId(value);
-  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) {
-    announce("Paste a direct video link or a valid YouTube link.");
-    el.videoUrl.focus();
-    return;
-  }
-  if (sourceUrl) {
-    URL.revokeObjectURL(sourceUrl);
-    sourceUrl = "";
-  }
-  el.sourceVideo.pause();
-  el.sourceVideo.removeAttribute("crossorigin");
-  el.sourceVideo.removeAttribute("src");
-  el.sourceVideo.load();
-  sourceKind = "youtube";
-  el.sourceVideo.hidden = true;
-  el.emptyState.hidden = true;
-  el.videoStage.hidden = false;
-  el.transport.hidden = true;
-  el.timeline.hidden = true;
-  youtubeFrame?.remove();
-  youtubeFrame = document.createElement("iframe");
-  youtubeFrame.className = "youtube-preview";
-  youtubeFrame.title = "YouTube video preview";
-  youtubeFrame.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
-  youtubeFrame.referrerPolicy = "strict-origin-when-cross-origin";
-  youtubeFrame.allowFullscreen = true;
-  youtubeFrame.src = `https://www.youtube-nocookie.com/embed/${id}?rel=0`;
-  el.videoStage.prepend(youtubeFrame);
-  el.captionPreview.hidden = true;
-  el.playButton.hidden = true;
-  el.stageTime.hidden = true;
-  el.exportButton.disabled = true;
-  el.resetButton.disabled = false;
-  el.fileName.textContent = "YouTube video";
-  el.fileMeta.textContent = "Preview only · YouTube player";
-  el.fileTab.classList.remove("is-active");
-  el.urlTab.classList.add("is-active");
-  el.fileTab.setAttribute("aria-pressed", "false");
-  el.urlTab.setAttribute("aria-pressed", "true");
-  el.filePane.hidden = true;
-  el.urlPane.hidden = false;
-  el.captionText.disabled = true;
-  el.frameMode.disabled = true;
-  el.captionStyle.disabled = true;
-  setStatus("Preview only", false);
-  setMessage("YouTube videos play in preview only. Use a file or CORS-enabled direct video URL to edit.");
-  el.privacyText.textContent = "YouTube preview loads from YouTube. Editing is disabled for this source.";
-  el.urlPane.scrollIntoView({ block: "nearest" });
-}
-
-function drawFrame() {
-  const video = el.sourceVideo;
-  const canvas = el.exportCanvas;
-  const ctx = canvas.getContext("2d", { alpha: false });
-  const cw = canvas.width;
-  const ch = canvas.height;
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!ctx || !vw || !vh) return;
-
-  ctx.fillStyle = "#101216";
-  ctx.fillRect(0, 0, cw, ch);
-  if (el.frameMode.value === "cover") {
-    const targetRatio = cw / ch;
-    const sourceRatio = vw / vh;
-    let sx = 0;
-    let sy = 0;
-    let sw = vw;
-    let sh = vh;
-    if (sourceRatio > targetRatio) {
-      sw = vh * targetRatio;
-      sx = (vw - sw) / 2;
-    } else {
-      sh = vw / targetRatio;
-      sy = (vh - sh) / 2;
+    const response = await fetch(url.href, { mode: "cors", credentials: "omit" });
+    if (!response.ok) throw new Error(`The video host returned ${response.status}.`);
+    const size = Number(response.headers.get("content-length") || 0);
+    if (size > 500 * 1024 * 1024) throw new Error("This browser clipper supports videos up to 500 MB.");
+    const blob = await response.blob();
+    if (blob.size > 500 * 1024 * 1024) throw new Error("This browser clipper supports videos up to 500 MB.");
+    let type = blob.type;
+    if (!type.startsWith("video/")) {
+      const ext = url.pathname.split(".").pop()?.toLowerCase();
+      type = ext === "webm" ? "video/webm" : "video/mp4";
     }
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
-  } else {
-    const scale = Math.min(cw / vw, ch / vh);
-    const dw = vw * scale;
-    const dh = vh * scale;
-    ctx.drawImage(video, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
-  }
-  drawCaption(ctx, cw, ch, el.captionText.value.trim(), el.captionStyle.value);
+    const name = decodeURIComponent(url.pathname.split("/").pop() || "video.mp4").split("?")[0];
+    const file = new File([blob], name, { type });
+    loadFileTab();
+    showSource(file);
+    el.fileMetaLabel.textContent = `${url.hostname} · ready to analyze`;
+  } catch (error) {
+    setStatus("Video link unavailable", false);
+    message("The host must allow CORS and direct video access.");
+    announce(error.message || "This video host did not allow browser access.");
+  } finally { el.loadUrl.disabled = false; }
 }
 
-function drawCaption(ctx, width, height, text, style) {
+function updateVideoState() {
+  const hasVideo = Number.isFinite(el.video.duration) && el.video.duration > 0;
+  el.find.disabled = !sourceFile || !hasVideo || exporting;
+  el.play.disabled = !hasVideo || exporting;
+  el.reset.disabled = !sourceFile || exporting;
+  if (hasVideo) {
+    el.find.setAttribute("aria-label", `Find clips in ${formatClock(el.video.duration)} video`);
+    el.time.textContent = `0:00 / ${formatClock(el.video.duration)}`;
+    setStatus("Ready to find clips", true);
+  }
+}
+
+function progress(label, value) {
+  el.progress.hidden = false;
+  el.progressLabel.textContent = label;
+  el.progressBar.value = Math.max(0, Math.min(100, value));
+  el.progressValue.textContent = `${Math.round(value)}%`;
+}
+
+async function findClips() {
+  if (!sourceFile || exporting) return;
+  clips = [];
+  transcript = [];
+  activePreview = null;
+  el.results.hidden = true;
+  el.find.disabled = true;
+  el.reset.disabled = true;
+  el.file.disabled = true;
+  el.loadUrl.disabled = true;
+  setStatus("Analyzing on this device", false, true);
+  message("No video is uploaded. First use loads AI models automatically; the browser caches them for next time.");
+  progress("Preparing local analysis", 1);
+  try {
+    clips = await findBestMoments(sourceFile, {
+      count: Number(el.count.value),
+      length: el.length.value,
+      duration: el.video.duration,
+      progress,
+    });
+    renderResults(clips);
+    el.results.hidden = false;
+    el.results.scrollIntoView({ behavior: "smooth", block: "start" });
+    setStatus(`${clips.length} clips found`, true);
+    message("SupoClip ranked these moments from the transcript. Download any clip to render it here.");
+    el.progressLabel.textContent = "Analysis complete";
+    el.progressBar.value = 100;
+    el.progressValue.textContent = "100%";
+  } catch (error) {
+    setStatus("Analysis stopped", false);
+    message(error.message || "The local analysis could not finish. Try again in Chrome or Edge.");
+    announce(error.message || "The local analysis could not finish.");
+    el.progress.hidden = true;
+  } finally {
+    el.file.disabled = false;
+    el.loadUrl.disabled = false;
+    el.reset.disabled = !sourceFile;
+    updateVideoState();
+  }
+}
+
+function renderResults(items) {
+  el.clipList.replaceChildren();
+  el.resultsCount.textContent = `${items.length} selected · highest score first`;
+  items.forEach((clip) => {
+    const card = document.createElement("article");
+    card.className = "clip-card";
+    const rank = document.createElement("span");
+    rank.className = "clip-rank";
+    rank.textContent = String(clip.index).padStart(2, "0");
+    const body = document.createElement("div");
+    body.className = "clip-body";
+    const title = document.createElement("h3");
+    title.textContent = clip.title;
+    const meta = document.createElement("div");
+    meta.className = "clip-meta";
+    meta.textContent = `${formatClock(clip.start)}–${formatClock(clip.end)} · ${Math.round(clip.end - clip.start)} sec`;
+    const reason = document.createElement("p");
+    reason.textContent = clip.reason;
+    const excerpt = document.createElement("blockquote");
+    excerpt.textContent = `“${clip.text}”`;
+    const score = document.createElement("span");
+    score.className = "clip-score";
+    score.textContent = `${clip.score} / 100`;
+    const actions = document.createElement("div");
+    actions.className = "clip-actions";
+    const preview = document.createElement("button");
+    preview.className = "button button-quiet";
+    preview.type = "button";
+    preview.textContent = "Preview moment";
+    preview.addEventListener("click", () => previewClip(clip));
+    const download = document.createElement("button");
+    download.className = "button button-primary";
+    download.type = "button";
+    download.textContent = "Render clip ↓";
+    download.addEventListener("click", () => renderClip(clip, download));
+    actions.append(preview, download);
+    body.append(title, meta, reason, excerpt, actions);
+    card.append(rank, body, score);
+    el.clipList.append(card);
+  });
+}
+
+async function previewClip(clip) {
+  activePreview = clip;
+  el.video.pause();
+  el.video.currentTime = clip.start;
+  await el.video.play().catch(() => {});
+  el.stage.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function drawOverlayBox(ctx, text, x, y, maxWidth, fontSize, place = "bottom") {
   if (!text) return;
-  const fontSize = 47;
-  const maxWidth = width * 0.82;
-  ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+  ctx.font = `700 ${fontSize}px Segoe UI, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const words = text.split(/\s+/);
@@ -332,294 +248,193 @@ function drawCaption(ctx, width, height, text, style) {
   let line = "";
   for (const word of words) {
     const next = line ? `${line} ${word}` : word;
-    if (ctx.measureText(next).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = next;
-    }
+    if (ctx.measureText(next).width > maxWidth && line) { lines.push(line); line = word; } else line = next;
   }
   if (line) lines.push(line);
-  const lineHeight = 56;
-  const paddingX = 18;
-  const paddingY = 11;
+  const lineHeight = fontSize * 1.16;
+  const padX = fontSize * 0.35;
+  const padY = fontSize * 0.24;
   const widest = Math.min(maxWidth, Math.max(...lines.map((item) => ctx.measureText(item).width)));
-  const boxWidth = widest + paddingX * 2;
-  const boxHeight = lines.length * lineHeight + paddingY * 2;
-  const x = (width - boxWidth) / 2;
-  const y = height * 0.76 - boxHeight / 2;
-  roundRect(ctx, x, y, boxWidth, boxHeight, 5);
-  ctx.fillStyle = style === "highlight" ? "#4f67e8" : "rgb(9 10 12 / 76%)";
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  lines.forEach((item, index) => ctx.fillText(item, width / 2, y + paddingY + lineHeight * index + lineHeight / 2, maxWidth));
-}
-
-function roundRect(ctx, x, y, width, height, radius) {
+  const boxWidth = widest + padX * 2;
+  const boxHeight = lines.length * lineHeight + padY * 2;
+  const top = place === "top" ? y : y - boxHeight;
+  ctx.fillStyle = "rgb(9 10 12 / 76%)";
   ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
+  ctx.roundRect(x - boxWidth / 2, top, boxWidth, boxHeight, 8);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  lines.forEach((item, index) => ctx.fillText(item, x, top + padY + lineHeight * index + lineHeight / 2, maxWidth));
 }
 
-function finishExport(chunks, recorder, canvasStream, sourceStream) {
-  if (isExporting) {
-    isExporting = false;
-    window.clearInterval(lastDraw);
-    el.sourceVideo.pause();
-    el.sourceVideo.currentTime = selectedStart();
-    canvasStream?.getTracks().forEach((track) => track.stop());
-    sourceStream?.getTracks().forEach((track) => track.stop());
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-  }
-  const blob = new Blob(chunks, { type: "video/webm" });
-  if (!blob.size) {
-    el.exportProgress.hidden = true;
-    setStatus("Export stopped", true);
-    setMessage("No video data was recorded. Try another browser or video file.");
-    updateControls();
-    return;
-  }
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = downloadUrl;
-  anchor.download = `supoclip-${new Date().toISOString().slice(0, 10)}.webm`;
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
-  el.progressBar.value = 100;
-  el.progressValue.textContent = "100%";
-  el.progressLabel.textContent = "Clip downloaded";
-  el.exportButton.disabled = false;
-  setStatus("Export complete", true);
-  setMessage("Your WebM clip was downloaded. Original video remains unchanged.");
-  window.setTimeout(() => {
-    el.exportProgress.hidden = true;
-    el.progressLabel.textContent = "Rendering clip…";
-  }, 2800);
-  updateControls();
+function drawClipFrame(clip) {
+  const video = el.video;
+  const canvas = el.canvas;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!ctx || !vw || !vh) return;
+  const targetRatio = cw / ch;
+  const sourceRatio = vw / vh;
+  let sx = 0, sy = 0, sw = vw, sh = vh;
+  if (sourceRatio > targetRatio) { sw = vh * targetRatio; sx = (vw - sw) / 2; }
+  else { sh = vw / targetRatio; sy = (vh - sh) / 2; }
+  ctx.fillStyle = "#101216";
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+  drawOverlayBox(ctx, clip.title, cw / 2, ch * 0.07, cw * 0.8, 39, "top");
+  const caption = clip.captions.find((item) => video.currentTime >= item.start && video.currentTime <= item.end)?.text;
+  drawOverlayBox(ctx, caption || "", cw / 2, ch * 0.9, cw * 0.82, 38, "bottom");
 }
 
-async function exportClip() {
-  const video = el.sourceVideo;
-  const duration = selectedEnd() - selectedStart();
-  if (isExporting || !video.videoWidth || duration < 0.5) return;
-  const types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
-  const mimeType = types.find((type) => MediaRecorder.isTypeSupported(type));
-  if (!mimeType) {
-    announce("This browser cannot export WebM. Use a recent version of Chrome, Edge, or Firefox.");
+function renderClip(clip, button) {
+  if (exporting) return;
+  const video = el.video;
+  if (!video.captureStream || !el.canvas.captureStream || !window.MediaRecorder) {
+    announce("This browser cannot render clips. Use recent Chrome or Edge.");
     return;
   }
-  const canvasStream = el.exportCanvas.captureStream(24);
+  const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+  if (!mimeType) { announce("WebM export is not available in this browser."); return; }
+  exporting = true;
+  updateVideoState();
+  el.file.disabled = true;
+  el.loadUrl.disabled = true;
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = "Rendering…";
+  setStatus("Rendering clip", false, true);
+  message("Rendering this clip in the browser. Keep this tab open.");
+  const canvasStream = el.canvas.captureStream(24);
   const sourceStream = video.captureStream();
-  const stream = new MediaStream([...canvasStream.getVideoTracks(), ...sourceStream.getAudioTracks()]);
+  const audioTracks = sourceStream.getAudioTracks();
+  const stream = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
   const recorder = new MediaRecorder(stream, { mimeType });
   const chunks = [];
-  recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-  recorder.onerror = () => {
-    isExporting = false;
-    window.clearInterval(lastDraw);
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(exportTimer);
     video.pause();
-    canvasStream.getTracks().forEach((track) => track.stop());
-    sourceStream.getTracks().forEach((track) => track.stop());
-    setStatus("Export failed", false);
-    setMessage("The browser could not record this video. Try a smaller file or a recent desktop browser.");
-    el.exportProgress.hidden = true;
-    el.exportButton.disabled = false;
-    updateControls();
-  };
-  recorder.onstop = () => finishExport(chunks, null, null, null);
-
-  isExporting = true;
-  el.exportProgress.hidden = false;
-  el.progressBar.value = 0;
-  el.progressValue.textContent = "0%";
-  el.exportButton.disabled = true;
-  setStatus("Rendering clip", false, true);
-  setMessage("Keep this tab open until the clip downloads.");
-  video.pause();
-  try {
-    video.currentTime = selectedStart();
-    await new Promise((resolve, reject) => {
-      if (Math.abs(video.currentTime - selectedStart()) < 0.02 && video.readyState >= 2) resolve();
-      else {
-        video.addEventListener("seeked", resolve, { once: true });
-        video.addEventListener("error", reject, { once: true });
-      }
-    });
-    drawFrame();
-    recorder.start(200);
-    await video.play();
-    lastDraw = window.setInterval(() => {
-      drawFrame();
-      const elapsed = Math.max(0, video.currentTime - selectedStart());
-      const progress = Math.min(100, elapsed / duration * 100);
-      el.progressBar.value = progress;
-      el.progressValue.textContent = `${Math.floor(progress)}%`;
-      if (video.currentTime >= selectedEnd() - 0.025) {
-        video.pause();
-        if (recorder.state !== "inactive") recorder.stop();
-        isExporting = false;
-        window.clearInterval(lastDraw);
-        canvasStream.getTracks().forEach((track) => track.stop());
-        sourceStream.getTracks().forEach((track) => track.stop());
-        video.currentTime = selectedStart();
-      }
-    }, 1000 / 24);
-  } catch {
-    isExporting = false;
-    canvasStream.getTracks().forEach((track) => track.stop());
-    sourceStream.getTracks().forEach((track) => track.stop());
     if (recorder.state !== "inactive") recorder.stop();
-    el.exportProgress.hidden = true;
-    setStatus("Export failed", false);
-    setMessage("Playback could not start. Press Play once, then export again.");
-    updateControls();
-  }
+    canvasStream.getTracks().forEach((track) => track.stop());
+    sourceStream.getTracks().forEach((track) => track.stop());
+  };
+  recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+  recorder.onerror = stop;
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: "video/webm" });
+    exporting = false;
+    el.file.disabled = false;
+    el.loadUrl.disabled = false;
+    button.disabled = false;
+    button.textContent = originalLabel;
+    setStatus("Clip ready", true);
+    if (blob.size) {
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = `supoclip-${clip.index}-${formatClock(clip.start).replaceAll(":", "-")}.webm`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+      message("Your selected clip was rendered and downloaded. The original video stayed in this tab.");
+    } else {
+      message("The browser returned an empty clip. Try previewing the video first, then render again.");
+    }
+    updateVideoState();
+  };
+  video.pause();
+  const onSeek = async () => {
+    video.removeEventListener("seeked", onSeek);
+    if (stopped) return;
+    try {
+      drawClipFrame(clip);
+      recorder.start(250);
+      await video.play();
+      exportTimer = window.setInterval(() => {
+        drawClipFrame(clip);
+        if (video.currentTime >= clip.end - 0.04) stop();
+      }, 1000 / 24);
+    } catch {
+      stop();
+      announce("Playback could not start. Press Preview moment once, then render again.");
+    }
+  };
+  video.addEventListener("seeked", onSeek, { once: true });
+  video.currentTime = clip.start;
+  if (Math.abs(video.currentTime - clip.start) < 0.02 && video.readyState >= 2) onSeek();
 }
 
-function resetProject() {
+function clearProject() {
   if (sourceUrl) URL.revokeObjectURL(sourceUrl);
   sourceUrl = "";
-  youtubeFrame?.remove();
-  youtubeFrame = null;
-  el.sourceVideo.pause();
-  el.sourceVideo.removeAttribute("crossorigin");
-  el.sourceVideo.removeAttribute("src");
-  el.sourceVideo.load();
-  el.sourceVideo.hidden = false;
-  el.emptyState.hidden = false;
-  el.videoStage.hidden = true;
-  el.captionPreview.hidden = false;
-  el.playButton.hidden = false;
-  el.stageTime.hidden = false;
-  el.transport.hidden = true;
-  el.timeline.hidden = true;
-  el.exportProgress.hidden = true;
-  el.fileName.textContent = "Drop a file or browse";
-  el.fileMeta.textContent = "MP4, MOV, WebM";
-  el.videoFile.value = "";
-  el.videoUrl.value = "";
-  el.captionText.value = "";
-  el.captionText.disabled = false;
-  el.frameMode.value = "cover";
-  el.frameMode.disabled = false;
-  el.captionStyle.value = "clean";
-  el.captionStyle.disabled = false;
-  el.startRange.value = "0";
-  el.endRange.value = "1";
-  el.captionPreview.classList.remove("is-highlight");
-  el.videoStage.style.removeProperty("aspect-ratio");
-  el.videoStage.style.removeProperty("max-height");
-  el.videoStage.style.removeProperty("max-width");
-  el.videoStage.style.removeProperty("width");
-  el.videoStage.style.removeProperty("height");
-  el.exportButton.disabled = true;
-  el.resetButton.disabled = true;
-  el.fileTab.classList.add("is-active");
-  el.urlTab.classList.remove("is-active");
-  el.fileTab.setAttribute("aria-pressed", "true");
-  el.urlTab.setAttribute("aria-pressed", "false");
-  el.filePane.hidden = false;
-  el.urlPane.hidden = true;
-  el.captionCount.textContent = "0 / 80";
-  sourceKind = "";
+  sourceFile = null;
+  clips = [];
+  transcript = [];
+  activePreview = null;
+  el.video.pause();
+  el.video.removeAttribute("src");
+  el.video.load();
+  el.video.hidden = false;
+  el.stage.hidden = true;
+  el.empty.hidden = false;
+  el.sourceMeta.hidden = true;
+  el.file.value = "";
+  el.url.value = "";
+  el.find.disabled = true;
+  el.reset.disabled = true;
+  el.results.hidden = true;
+  el.clipList.replaceChildren();
+  el.progress.hidden = true;
+  loadFileTab();
   setStatus("Waiting for video", false);
-  setMessage("No account. No subscription. No upload.");
-  el.privacyText.textContent = "Your video stays in this tab. Nothing uploads.";
-  updateControls();
+  message("Nothing uploads. Your selected video is analyzed on this device.");
 }
 
-el.videoFile.addEventListener("change", () => setFile(el.videoFile.files?.[0]));
-el.sourceVideo.addEventListener("loadedmetadata", onMetadata);
-el.sourceVideo.addEventListener("error", () => {
-  setStatus("Video could not open", false);
-  const urlHint = sourceKind === "url" ? "The host must allow cross-origin video access." : "Try H.264 MP4 or WebM.";
-  setMessage(`${urlHint} Chrome, Edge, and Firefox support the editor.`);
-  announce(sourceKind === "url" ? "Video link failed. Check the URL and its CORS settings." : "This browser cannot decode the video. Try H.264 MP4 or WebM.");
-});
-el.startRange.addEventListener("input", () => {
-  const maxStart = Math.max(0, selectedEnd() - 0.5);
-  if (selectedStart() > maxStart) el.startRange.value = String(maxStart);
-  updateRange();
-});
-el.endRange.addEventListener("input", () => {
-  const minEnd = Math.min(el.sourceVideo.duration || 0, selectedStart() + 0.5);
-  if (selectedEnd() < minEnd) el.endRange.value = String(minEnd);
-  updateRange();
-});
-el.seekRange.addEventListener("input", () => {
-  seeking = true;
-  el.sourceVideo.currentTime = Number(el.seekRange.value);
-  el.transportTime.textContent = formatTime(el.sourceVideo.currentTime);
-  el.stageTime.textContent = `${formatTime(el.sourceVideo.currentTime)} / ${formatTime(el.sourceVideo.duration)}`;
-  seeking = false;
-});
-el.playButton.addEventListener("click", async () => {
-  if (el.sourceVideo.paused) {
-    if (el.sourceVideo.currentTime < selectedStart() || el.sourceVideo.currentTime >= selectedEnd()) el.sourceVideo.currentTime = selectedStart();
-    try { await el.sourceVideo.play(); } catch { announce("Press Play again to start this preview."); }
-  } else {
-    el.sourceVideo.pause();
+el.file.addEventListener("change", () => showSource(el.file.files?.[0]));
+el.loadUrl.addEventListener("click", loadDirectUrl);
+el.url.addEventListener("keydown", (event) => { if (event.key === "Enter") loadDirectUrl(); });
+el.fileTab.addEventListener("click", loadFileTab);
+el.urlTab.addEventListener("click", loadUrl);
+el.find.addEventListener("click", findClips);
+el.reset.addEventListener("click", clearProject);
+el.video.addEventListener("loadedmetadata", updateVideoState);
+el.video.addEventListener("timeupdate", () => {
+  const duration = el.video.duration || 0;
+  el.time.textContent = `${formatClock(el.video.currentTime)} / ${formatClock(duration)}`;
+  if (activePreview && el.video.currentTime >= activePreview.end) {
+    el.video.pause();
+    activePreview = null;
   }
 });
-el.sourceVideo.addEventListener("timeupdate", () => {
-  if (!isExporting && el.sourceVideo.currentTime >= selectedEnd() && !el.sourceVideo.paused) {
-    el.sourceVideo.pause();
-    el.sourceVideo.currentTime = selectedStart();
-  }
+el.video.addEventListener("error", () => {
+  if (sourceFile) announce("This browser could not decode the video. Try H.264 MP4 or WebM.");
 });
-el.jumpStart.addEventListener("click", () => { el.sourceVideo.currentTime = selectedStart(); });
-el.captionText.addEventListener("input", updateCaption);
-el.captionStyle.addEventListener("change", updateCaption);
-el.frameMode.addEventListener("change", () => { el.sourceVideo.style.objectFit = el.frameMode.value === "cover" ? "cover" : "contain"; });
-el.exportButton.addEventListener("click", exportClip);
-el.resetButton.addEventListener("click", resetProject);
-el.loadUrl.addEventListener("click", () => setVideoUrl(el.videoUrl.value));
-el.videoUrl.addEventListener("keydown", (event) => { if (event.key === "Enter") setVideoUrl(el.videoUrl.value); });
-el.fileTab.addEventListener("click", () => {
-  el.fileTab.classList.add("is-active");
-  el.urlTab.classList.remove("is-active");
-  el.fileTab.setAttribute("aria-pressed", "true");
-  el.urlTab.setAttribute("aria-pressed", "false");
-  el.filePane.hidden = false;
-  el.urlPane.hidden = true;
+el.play.addEventListener("click", async () => {
+  if (el.video.paused) await el.video.play().catch(() => announce("Press Play again to start the preview."));
+  else el.video.pause();
 });
-el.urlTab.addEventListener("click", () => {
-  el.urlTab.classList.add("is-active");
-  el.fileTab.classList.remove("is-active");
-  el.urlTab.setAttribute("aria-pressed", "true");
-  el.fileTab.setAttribute("aria-pressed", "false");
-  el.urlPane.hidden = false;
-  el.filePane.hidden = true;
-  el.videoUrl.focus();
+el.video.addEventListener("play", () => {
+  el.play.classList.add("is-playing");
+  el.play.setAttribute("aria-label", "Pause video");
 });
-el.dropZone.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    el.videoFile.click();
-  }
+el.video.addEventListener("pause", () => {
+  el.play.classList.remove("is-playing");
+  el.play.setAttribute("aria-label", "Play video");
 });
-for (const eventName of ["dragenter", "dragover"]) {
-  el.dropZone.addEventListener(eventName, (event) => { event.preventDefault(); el.dropZone.classList.add("is-dragging"); });
-}
-for (const eventName of ["dragleave", "drop"]) {
-  el.dropZone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    el.dropZone.classList.remove("is-dragging");
-    if (eventName === "drop") setFile(event.dataTransfer.files?.[0]);
-  });
-}
-el.stageWrap.addEventListener("dragover", (event) => event.preventDefault());
-el.stageWrap.addEventListener("drop", (event) => {
+el.drop.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") { event.preventDefault(); el.file.click(); }
+});
+for (const type of ["dragenter", "dragover"]) el.drop.addEventListener(type, (event) => { event.preventDefault(); el.drop.classList.add("is-dragging"); });
+for (const type of ["dragleave", "drop"]) el.drop.addEventListener(type, (event) => {
   event.preventDefault();
-  setFile(event.dataTransfer.files?.[0]);
+  el.drop.classList.remove("is-dragging");
+  if (type === "drop") showSource(event.dataTransfer.files?.[0]);
 });
-
+el.stage.addEventListener("dragover", (event) => event.preventDefault());
+el.stage.addEventListener("drop", (event) => { event.preventDefault(); showSource(event.dataTransfer.files?.[0]); });
 window.addEventListener("beforeunload", (event) => {
-  if (isExporting) {
-    event.preventDefault();
-    event.returnValue = "";
-  }
+  if (exporting) { event.preventDefault(); event.returnValue = ""; }
 });
-
-el.captionText.value = "";
-updateCaption();
-exportFrame = window.requestAnimationFrame(syncPreviewTime);

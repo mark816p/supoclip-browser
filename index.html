@@ -4,89 +4,75 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#0c0e12">
-    <meta name="description" content="Open a video in your browser, trim a moment, frame it vertically, add a caption, and export a clip. No software install.">
+    <meta name="description" content="Find the strongest moments in a video and turn them into short clips. AI processing runs in your browser.">
     <meta name="site-kind" content="software">
     <meta name="page-type" content="software">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="SupoClip Browser Studio">
-    <meta property="og:description" content="A free browser video editor for short clips. No software install or account required.">
+    <meta property="og:title" content="SupoClip Browser Clipper">
+    <meta property="og:description" content="Find strong video moments automatically with local browser AI.">
     <meta name="twitter:card" content="summary">
-    <title>SupoClip Browser Studio — No-install video clip editor</title>
+    <title>SupoClip — Automatic browser clipper</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <a class="skip-link" href="#studio">Skip to editor</a>
+    <a class="skip-link" href="#studio">Skip to clipper</a>
     <header class="topbar">
-      <a class="brand" href="#studio" aria-label="SupoClip Browser Studio home">
+      <a class="brand" href="#studio" aria-label="SupoClip home">
         <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span>SupoClip<span class="brand-light"> / browser studio</span></span>
+        <span>SupoClip<span class="brand-light"> / automatic clipper</span></span>
       </a>
       <div class="topbar-right">
-        <span class="local-state"><span class="state-dot"></span>Runs on this device</span>
-        <a class="source-link" href="https://github.com/FujiwaraChoki/supoclip" target="_blank" rel="noreferrer">SupoClip source <span aria-hidden="true">↗</span></a>
+        <span class="local-state"><span class="state-dot"></span>AI runs in your browser</span>
+        <a class="source-link" href="https://github.com/mark816p/supoclip-browser" target="_blank" rel="noreferrer">Source <span aria-hidden="true">↗</span></a>
       </div>
     </header>
 
     <main id="studio">
       <div class="studio-head">
         <div>
-          <p class="eyebrow"><span class="eyebrow-index">01</span> BROWSER VIDEO EDITOR</p>
-          <h1>Browser video editor.</h1>
-          <p class="intro">Open a video here. Trim a moment, set the frame, add a caption, and export. No software install.</p>
+          <p class="eyebrow"><span class="eyebrow-index">01</span> AUTOMATIC VIDEO CLIPPER</p>
+          <h1>Find the moments worth sharing.</h1>
+          <p class="intro">Choose a video. SupoClip transcribes it, ranks the strongest moments, and prepares short clips on this device.</p>
         </div>
-        <button class="button button-quiet reset-button" id="resetButton" type="button" aria-label="Clear project" disabled>Clear project <span aria-hidden="true">×</span></button>
+        <button class="button button-quiet reset-button" id="resetButton" type="button" aria-label="Clear video" disabled>Clear video <span aria-hidden="true">×</span></button>
       </div>
 
-      <section class="studio-grid" aria-label="Video editing workspace">
+      <section class="studio-grid" aria-label="Automatic clipper">
         <div class="preview-column">
           <div class="section-bar">
-            <h2>Preview</h2>
-            <span class="aspect-label"><span class="aspect-icon" aria-hidden="true"></span>9:16 VERTICAL</span>
+            <h2 id="sourceHeading">Your video</h2>
+            <span class="aspect-label"><span class="aspect-icon" aria-hidden="true"></span>PRIVATE · ON DEVICE</span>
           </div>
           <div class="stage-wrap" id="stageWrap">
             <div class="stage-empty" id="emptyState">
               <div class="empty-glyph" aria-hidden="true"><span></span><span></span><span></span></div>
-              <p class="empty-title">Your next clip goes here.</p>
-              <p class="empty-copy">Choose a file or paste a direct video link. The browser does the editing.</p>
+              <p class="empty-title">Give the story a source.</p>
+              <p class="empty-copy">Upload a video or paste a direct MP4/WebM link. The clipper finds moments automatically.</p>
               <label class="button button-primary upload-button" for="videoFile">Choose a video <span aria-hidden="true">↑</span></label>
-              <span class="file-note">No app install · output downloads when ready</span>
+              <span class="file-note">No app to install · your video stays here</span>
             </div>
             <div class="video-stage" id="videoStage" hidden>
-              <video id="sourceVideo" playsinline preload="metadata" aria-label="Source video preview"></video>
-              <div class="caption-preview" id="captionPreview"></div>
-              <button class="play-toggle" id="playButton" type="button" aria-label="Play preview" disabled>
+              <video id="sourceVideo" playsinline preload="metadata" aria-label="Selected source video"></video>
+              <button class="play-toggle" id="playButton" type="button" aria-label="Play video" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg>
               </button>
               <span class="stage-time" id="stageTime">0:00 / 0:00</span>
             </div>
-            <canvas id="exportCanvas" width="720" height="1280" aria-hidden="true"></canvas>
           </div>
-          <div class="transport" id="transport" hidden>
-            <button class="button button-quiet" id="jumpStart" type="button" aria-label="Jump to clip start">↤</button>
-            <input class="seek-range" id="seekRange" type="range" min="0" max="1" step="0.01" value="0" aria-label="Preview position">
-            <span class="transport-time" id="transportTime">0:00</span>
-          </div>
-          <div class="timeline" id="timeline" hidden>
-            <div class="timeline-head"><span>Clip range</span><span id="clipDuration">0.0 sec</span></div>
-            <div class="range-wrap">
-              <div class="range-track"><span id="rangeFill"></span></div>
-              <input class="range-input range-start" id="startRange" type="range" min="0" max="1" step="0.1" value="0" aria-label="Clip start">
-              <input class="range-input range-end" id="endRange" type="range" min="0" max="1" step="0.1" value="1" aria-label="Clip end">
-            </div>
-            <div class="range-labels"><span id="startLabel">00:00.0</span><span id="endLabel">00:00.0</span></div>
-          </div>
-          <div class="privacy-note"><span class="lock-icon" aria-hidden="true">⌑</span><span>Your video stays in this tab. Nothing uploads.</span></div>
+          <canvas id="exportCanvas" width="720" height="1280" aria-hidden="true"></canvas>
+          <div class="source-meta" id="sourceMeta" hidden><span id="fileName"></span><span id="fileMeta"></span></div>
+          <div class="privacy-note"><span class="lock-icon" aria-hidden="true">⌑</span><span>Video analysis stays in this tab. AI models load automatically and cache in this browser.</span></div>
         </div>
 
-        <aside class="edit-panel" aria-label="Clip settings">
+        <aside class="edit-panel" aria-label="Clip options">
           <div class="panel-head">
-            <div><p class="eyebrow"><span class="eyebrow-index">02</span> CLIP SETTINGS</p><h2>Shape the cut</h2></div>
+            <div><p class="eyebrow"><span class="eyebrow-index">02</span> CLIP SETTINGS</p><h2>Set the result</h2></div>
             <span class="panel-status" id="projectStatus"><span class="state-dot"></span>Waiting for video</span>
           </div>
 
           <div class="input-tabs" role="group" aria-label="Video source type">
-            <button class="input-tab is-active" id="fileTab" type="button" aria-pressed="true">Video file</button>
+            <button class="input-tab is-active" id="fileTab" type="button" aria-pressed="true">Upload video</button>
             <button class="input-tab" id="urlTab" type="button" aria-pressed="false">Video URL</button>
           </div>
 
@@ -94,56 +80,49 @@
             <label class="field-label" for="videoFile">Source video</label>
             <label class="drop-zone" id="dropZone" for="videoFile" tabindex="0">
               <span class="drop-icon" aria-hidden="true">＋</span>
-              <span class="drop-copy"><strong id="fileName">Drop a file or browse</strong><small id="fileMeta">MP4, MOV, WebM</small></span>
+              <span class="drop-copy"><strong id="fileNameLabel">Drop a video or browse</strong><small id="fileMetaLabel">MP4, MOV, or WebM</small></span>
               <span class="browse-word">Browse</span>
             </label>
             <input class="visually-hidden" id="videoFile" name="videoFile" type="file" accept="video/*" tabindex="-1" aria-hidden="true">
           </div>
 
           <div class="input-pane" id="urlPane" hidden>
-          <label class="field-label" for="videoUrl">Direct video URL</label>
+            <label class="field-label" for="videoUrl">Direct video URL</label>
             <div class="url-entry"><input id="videoUrl" name="videoUrl" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com/video.mp4"><button class="url-go" id="loadUrl" type="button" aria-label="Load video URL">↗</button></div>
-            <p class="field-hint" id="urlHint">MP4/WebM links need CORS access. YouTube plays in preview only and cannot be exported here.</p>
+            <p class="field-hint">Use a direct HTTPS video link from a host that allows browser access (CORS). YouTube links can’t be processed here.</p>
           </div>
 
           <div class="panel-divider"></div>
 
-          <div class="control-group">
-            <div class="control-heading"><label class="field-label" for="captionText">Caption</label><span class="optional-label">OPTIONAL</span></div>
-            <textarea id="captionText" name="captionText" rows="2" maxlength="80" placeholder="Add a short caption…" autocomplete="off"></textarea>
-            <div class="field-foot"><span>Shown on the exported clip</span><span id="captionCount">0 / 80</span></div>
+          <div class="control-row auto-options">
+            <div class="control-group"><label class="field-label" for="clipCount">Number of clips</label><select id="clipCount"><option value="3" selected>3 strongest</option><option value="5">5 moments</option><option value="1">1 best moment</option></select></div>
+            <div class="control-group"><label class="field-label" for="clipLength">Clip length</label><select id="clipLength"><option value="auto" selected>Best fit</option><option value="30">Around 30 sec</option><option value="45">Around 45 sec</option><option value="60">Around 60 sec</option></select></div>
           </div>
-
-          <div class="control-row">
-            <div class="control-group"><label class="field-label" for="frameMode">Frame</label><select id="frameMode" name="frameMode"><option value="cover">Fill vertical</option><option value="contain">Fit full video</option></select></div>
-            <div class="control-group"><label class="field-label" for="captionStyle">Caption style</label><select id="captionStyle" name="captionStyle"><option value="clean">Clean</option><option value="highlight">Highlight</option></select></div>
-          </div>
+          <p class="field-hint option-hint">The AI looks for a clear hook, a complete thought, and a satisfying payoff.</p>
 
           <div class="panel-divider export-divider"></div>
 
           <div class="export-row">
-            <div class="export-copy"><span class="export-title">Export clip</span><span class="export-meta" id="exportMeta">WebM · 720 × 1280</span></div>
-            <button class="button button-primary export-button" id="exportButton" type="button" disabled>Export <span aria-hidden="true">↓</span></button>
+            <div class="export-copy"><span class="export-title">Find best clips</span><span class="export-meta">Local AI · no account</span></div>
+            <button class="button button-primary export-button" id="findClips" type="button" disabled>Find clips <span aria-hidden="true">↗</span></button>
           </div>
           <div class="export-progress" id="exportProgress" hidden>
-            <div class="progress-head"><span id="progressLabel">Rendering clip…</span><span id="progressValue">0%</span></div>
+            <div class="progress-head"><span id="progressLabel">Preparing video…</span><span id="progressValue">0%</span></div>
             <progress id="progressBar" max="100" value="0">0%</progress>
           </div>
-          <p class="panel-footnote" id="panelMessage" aria-live="polite">No account. No subscription. No upload.</p>
+          <p class="panel-footnote" id="panelMessage" aria-live="polite">Nothing uploads. Your selected video is analyzed on this device.</p>
         </aside>
       </section>
 
-      <section class="engine-note" aria-label="Editor capabilities">
-        <div class="engine-item"><span class="engine-mark" aria-hidden="true">01</span><span><strong>Browser editing</strong><small>Files or direct video links.</small></span></div>
-        <div class="engine-item"><span class="engine-mark" aria-hidden="true">02</span><span><strong>Local rendering</strong><small>No app install or account.</small></span></div>
-        <div class="engine-item"><span class="engine-mark engine-mark-muted" aria-hidden="true">↗</span><span><strong>SupoClip AI</strong><small>Needs the full SupoClip server.</small></span></div>
-        <a class="guide-link" href="https://github.com/FujiwaraChoki/supoclip#quick-start" target="_blank" rel="noreferrer">Open setup guide <span aria-hidden="true">↗</span></a>
+      <section class="results-section" id="results" aria-live="polite" hidden>
+        <div class="results-head"><div><p class="eyebrow"><span class="eyebrow-index">03</span> YOUR CLIPS</p><h2>Best moments</h2></div><span class="results-count" id="resultsCount"></span></div>
+        <div class="clip-list" id="clipList"></div>
       </section>
 
       <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
     </main>
 
-    <footer class="site-footer"><span>Free to use · Files stay in your browser</span><span><a href="https://github.com/FujiwaraChoki/supoclip" target="_blank" rel="noreferrer">SupoClip source</a><span class="footer-separator">·</span><span>Independent browser editor</span></span></footer>
-    <script src="app.js" defer></script>
+    <footer class="site-footer"><span>Free to use · Runs on your device</span><span><a href="https://github.com/mark816p/supoclip-browser" target="_blank" rel="noreferrer">Source code</a><span class="footer-separator">·</span><span>Adapted from SupoClip</span></span></footer>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
