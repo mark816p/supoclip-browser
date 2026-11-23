@@ -180,6 +180,8 @@ progress { width: 100%; height: 5px; appearance: none; border: 0; background: #e
 progress::-webkit-progress-bar { background: #eaedf1; }
 progress::-webkit-progress-value { background: var(--accent); transition: width 100ms linear; }
 progress::-moz-progress-bar { background: var(--accent); }
+progress.is-indeterminate { background-image: linear-gradient(90deg, var(--line) 0%, var(--line) 35%, var(--accent) 50%, var(--line) 65%, var(--line) 100%); background-size: 220% 100%; animation: progress-sweep 1.25s ease-in-out infinite; }
+@keyframes progress-sweep { from { background-position: 100% 0; } to { background-position: -120% 0; } }
 .panel-footnote { min-height: 16px; margin: 9px 0 0; color: #626975; font-size: 10px; line-height: 1.45; }
 
 .engine-note { min-height: 87px; display: grid; grid-template-columns: 1fr 1fr 1fr auto; align-items: center; gap: 16px; padding: 17px 4px 0; }

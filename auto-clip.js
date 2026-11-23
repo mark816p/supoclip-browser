@@ -116,23 +116,40 @@ async function getTranscriber(progress) {
 }
 
 async function transcribe(transcriber, audio, duration, progress) {
-  const result = await transcriber(audio, {
-    chunk_length_s: 30,
-    stride_length_s: 5,
-    return_timestamps: "word",
-    callback_function: (event) => {
-      const part = Number(event?.progress ?? event?.chunk ?? 0);
-      progress("Transcribing speech on this device", Math.min(60, 48 + Math.floor(part * 10)));
-    },
-  });
-  const chunks = (result.chunks || []).map((chunk) => ({
-    start: Number(chunk.timestamp?.[0]),
-    end: Number(chunk.timestamp?.[1]),
-    text: String(chunk.text || "").trim(),
-  })).filter((chunk) => chunk.text && Number.isFinite(chunk.start) && Number.isFinite(chunk.end) && chunk.end > chunk.start);
-  if (chunks.length) return chunks;
-  const text = String(result.text || "").trim();
-  return text && duration > 0 ? [{ start: 0, end: duration, text }] : [];
+  const sampleRate = 16000;
+  const segmentSeconds = 15;
+  const overlapSeconds = 1;
+  const totalSeconds = Math.min(duration || audio.length / sampleRate, audio.length / sampleRate);
+  const segmentCount = Math.ceil(totalSeconds / segmentSeconds);
+  const words = [];
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const coreStart = index * segmentSeconds;
+    const coreEnd = Math.min(totalSeconds, coreStart + segmentSeconds);
+    const audioStart = Math.max(0, coreStart - overlapSeconds);
+    const audioEnd = Math.min(totalSeconds, coreEnd + (index < segmentCount - 1 ? overlapSeconds : 0));
+    const input = audio.subarray(Math.floor(audioStart * sampleRate), Math.ceil(audioEnd * sampleRate));
+    progress(`Transcribing speech · ${index + 1} of ${segmentCount}`, 0, true);
+    const result = await transcriber(input, { return_timestamps: "word" });
+    const segmentWords = (result.chunks || []).map((chunk) => {
+      const start = Number(chunk.timestamp?.[0]) + audioStart;
+      const end = Number(chunk.timestamp?.[1]) + audioStart;
+      return { start, end, text: String(chunk.text || "").trim() };
+    }).filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start);
+
+    if (segmentWords.length) {
+      words.push(...segmentWords.filter((word) => {
+        const midpoint = (word.start + word.end) / 2;
+        return midpoint >= coreStart && (midpoint < coreEnd || index === segmentCount - 1 && midpoint <= coreEnd + 0.5);
+      }));
+    } else {
+      const text = String(result.text || "").trim();
+      if (text) words.push({ start: coreStart, end: coreEnd, text });
+    }
+
+    progress(`Transcribing speech · ${index + 1} of ${segmentCount}`, 48 + Math.round((index + 1) / segmentCount * 12));
+  }
+  return words;
 }
 
 async function getClipEngine(progress) {

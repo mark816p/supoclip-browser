@@ -140,11 +140,17 @@ function updateVideoState() {
   }
 }
 
-function progress(label, value) {
+function progress(label, value, indeterminate = false) {
   el.progress.hidden = false;
   el.progressLabel.textContent = label;
-  el.progressBar.value = Math.max(0, Math.min(100, value));
-  el.progressValue.textContent = `${Math.round(value)}%`;
+  el.progressBar.classList.toggle("is-indeterminate", indeterminate);
+  if (indeterminate) {
+    el.progressBar.removeAttribute("value");
+    el.progressValue.textContent = "Working";
+  } else {
+    el.progressBar.value = Math.max(0, Math.min(100, value));
+    el.progressValue.textContent = `${Math.round(value)}%`;
+  }
 }
 
 async function findClips() {
